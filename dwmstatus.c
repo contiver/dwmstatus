@@ -18,9 +18,8 @@
 #define BAT_VOLTAGE_NOW "/sys/class/power_supply/BAT0/voltage_now"
 #define TIMEZONE "America/Buenos_Aires"
 #define DATE_TIME_FMT "%a %b %d  %H:%M"
-#define UPDATE_INTERVAL 5
+#define UPDATE_INTERVAL 4
 
-char *tzargentina = TIMEZONE;
 static Display *dpy;
 
 char *
@@ -33,8 +32,7 @@ smprintf(char *fmt, ...){
     len = vsnprintf(NULL, 0, fmt, fmtargs);
     va_end(fmtargs);
 
-    ret = malloc(++len);
-    if(ret == NULL){
+    if( (ret = malloc(++len)) == NULL){
         perror("malloc");
         exit(EXIT_FAILURE);
     }
@@ -50,7 +48,6 @@ void
 settz(char *tzname){
     setenv("TZ", tzname, 1);
 }
-
 
 void
 setstatus(char *str){
@@ -124,24 +121,6 @@ mktimes(char dateTime[129]){
     }
 }
 
-char *
-readfile(char *base, char *name){
-    char *path, line[513];
-    FILE *file;
-
-    memset(line, 0, sizeof(line));
-
-    path = smprintf("%s/%s", base, name);
-    file = fopen(path, "r");
-    if(file == NULL) return NULL;
-    free(path);
-
-    if(fgets(line, sizeof(line)-1, file) == NULL) return NULL;
-    fclose(file);
-
-    return smprintf("%s", line);
-}
-
 int
 getTemperature(void){
     FILE *file;
@@ -174,9 +153,8 @@ main(void){
         batteryStatus(bstatus);
 
         status = smprintf("%s %d%%  |  T: %d  |  %s",
-                bstatus, bp, temp, dateTime);
+                          bstatus, bp, temp, dateTime);
         setstatus(status);
-
         free(status);
     }
 
