@@ -20,7 +20,6 @@
 #define BAT_ENERGY_FULL "/sys/class/power_supply/BAT0/energy_full"
 #define BAT_ENERGY_NOW  "/sys/class/power_supply/BAT0/energy_now"
 #define BAT_STATUS      "/sys/class/power_supply/BAT0/status"
-#define BAT_VOLTAGE_NOW "/sys/class/power_supply/BAT0/voltage_now"
 #define TIMEZONE        "America/Buenos_Aires"
 #define DATE_TIME_FMT   "%a %d  %H:%M"
 #define UPDATE_INTERVAL 3
@@ -29,7 +28,6 @@
 #define ST_BUF          300
 #define BS_BUF          12 
 
-static Display *dpy;
 
 /*
  * Copies the battery status into the bs array.
@@ -40,7 +38,6 @@ get_battery_status(char *bs){
     FILE *file;
 
     if( (file = fopen(BAT_STATUS, "r")) == NULL ){
-        fprintf(stderr, "Error opening status.\n");
         strcpy(bs, "error");
         return;
     }
@@ -51,32 +48,22 @@ get_battery_status(char *bs){
 void
 get_battery_percentage(int *bp){
     FILE *file;
-    int energy_now, energy_full, voltage_now;
+    float energy_now, energy_full;
 
-    if( (file = fopen(BAT_ENERGY_NOW, "r")) == NULL){
-        fprintf(stderr, "Error opening energy_now.\n");
+    if( (file = fopen(BAT_ENERGY_NOW, "r")) == NULL ){
+        *bp = -1;
         return;
     }
-    fscanf(file, "%d", &energy_now);
-    fclose(file);
-
-    
-    if( (file = fopen(BAT_ENERGY_FULL, "r")) == NULL){
-        fprintf(stderr, "Error opening energy_full.\n");
-        return;
-    }
-    fscanf(file, "%d", &energy_full);
+    fscanf(file, "%f", &energy_now);
     fclose(file);
     
-    if( (file = fopen(BAT_VOLTAGE_NOW, "r")) == NULL){
-        fprintf(stderr, "Error opening voltage_now.\n");
+    if( (file = fopen(BAT_ENERGY_FULL, "r")) == NULL ){
+        *bp = -2;
         return;
     }
-    fscanf(file, "%d", &voltage_now);
+    fscanf(file, "%f", &energy_full);
     fclose(file);
-
-    *bp = ((float)energy_now * 1000 / (float)voltage_now) * 100 /
-                ((float)energy_full * 1000 / (float)voltage_now);
+    *bp = (100*energy_now)/energy_full; 
 }
 
 void
@@ -90,17 +77,14 @@ get_datetime(char *dtp){
 void
 get_temperature(int *temp){
     FILE *file;
-    int temp1_input;
 
-    if( (file = fopen(TEMP1_INPUT, "r")) == NULL){
-        fprintf(stderr, "Error opening temp1_input.\n");
+    if( (file = fopen(TEMP1_INPUT, "r")) == NULL ){
+        *temp = -1;
         return;
     }
-    fscanf(file, "%d", &temp1_input);
+    fscanf(file, "%2d", temp);
     fclose(file);
-    *temp = temp1_input/1000;
 }
-
 
 int 
 is_up(char *device){
@@ -108,13 +92,10 @@ is_up(char *device){
     char fn[32], state[5];
 
     snprintf(fn, sizeof(fn), "/sys/class/net/%s/operstate", device);
-    fp = fopen(fn, "r");
-    if(fp == NULL)
-        return 0;
+    if( (fp = fopen(fn, "r")) == NULL) return 0;
     fscanf(fp, "%s", state);
     fclose(fp);
-    if(strcmp(state, "up") == 0)
-        return 1;
+    if(strcmp(state, "up") == 0) return 1;
     return 0;
 }
 
@@ -125,25 +106,21 @@ get_network(char *buf){
     struct iwreq wreq;
     struct iw_statistics stats;
 
-    if(is_up(WIRELESS_DEVICE)){
+    if( is_up(WIRELESS_DEVICE) ){
         memset(&wreq, 0, sizeof(struct iwreq));
         sprintf(wreq.ifr_name, WIRELESS_DEVICE);
-        sockfd = socket(AF_INET, SOCK_DGRAM, 0);
-        if(sockfd != -1) {
+        if( (sockfd = socket(AF_INET, SOCK_DGRAM, 0)) != -1 ){
             wreq.u.essid.pointer = ssid;
             wreq.u.essid.length = sizeof(ssid);
-            if(!ioctl(sockfd, SIOCGIWESSID, &wreq))
-                ssid[0] = toupper(ssid[0]);
-
-            wreq.u.data.pointer = (caddr_t) &stats;
+            ioctl(sockfd, SIOCGIWESSID, &wreq);
+            wreq.u.data.pointer = (caddr_t)&stats;
             wreq.u.data.length = sizeof(struct iw_statistics);
             wreq.u.data.flags = 1;
-            if(!ioctl(sockfd, SIOCGIWSTATS, &wreq))
+            if( !ioctl(sockfd, SIOCGIWSTATS, &wreq) )
                 qual = stats.qual.qual;
         }
         snprintf(buf, NET_BUF, "%s %d/70", ssid, qual);
         close(sockfd);
-
     }else if(is_up(WIRED_DEVICE))
         snprintf(buf, NET_BUF, "Eth On");
     else
@@ -152,6 +129,7 @@ get_network(char *buf){
 
 int
 main(void){
+    Display *dpy;
     char net[NET_BUF], status[ST_BUF], bstatus[BS_BUF], datetime[DT_BUF];
     int bp = -1, temp = -1;
 
