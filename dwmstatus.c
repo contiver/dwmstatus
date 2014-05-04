@@ -19,30 +19,30 @@
 #define TEMP1_INPUT     "/sys/class/hwmon/hwmon1/device/temp1_input"
 #define BAT_ENERGY_FULL "/sys/class/power_supply/BAT0/energy_full"
 #define BAT_ENERGY_NOW  "/sys/class/power_supply/BAT0/energy_now"
-#define BAT_STATUS      "/sys/class/power_supply/BAT0/status"
+#define BAT_POWER_NOW   "/sys/class/power_supply/BAT0/power_now"
+#define AC_ONLINE       "/sys/class/power_supply/AC0/online"
 #define TIMEZONE        "America/Buenos_Aires"
-#define DATE_TIME_FMT   "%a %d  %H:%M"
+#define DATE_TIME_FMT   "%a %d %b  %H:%M"
 #define UPDATE_INTERVAL 3
+#define BL_BUF          8       // Enough for "(xx:xx)\0"
 #define DT_BUF          129
 #define NET_BUF         129
 #define ST_BUF          300
-#define BS_BUF          12 
+#define AC_BUF          4
 
-
-/*
- * Copies the battery status into the bs array.
- * Note it must have at least size for 12 chars for the "Discharging\0" string
- */
 void
-get_battery_status(char *bs){
+get_ac_status(char *bs){
     FILE *file;
+    int ac_online;
 
-    if( (file = fopen(BAT_STATUS, "r")) == NULL ){
-        strcpy(bs, "error");
+    if( (file = fopen(AC_ONLINE, "r")) == NULL ){
+        strcpy(bs, "¿?");
         return;
     }
-    fscanf(file, "%s", bs);
+    fscanf(file, "%d", &ac_online);
     fclose(file);
+    if(ac_online) strcpy(bs, "Ac");
+    else strcpy(bs, "Bat");
 }
 
 void
@@ -64,6 +64,30 @@ get_battery_percentage(int *bp){
     fscanf(file, "%f", &energy_full);
     fclose(file);
     *bp = (100*energy_now)/energy_full; 
+}
+
+void
+get_battery_left(char *bl){
+    FILE *fp1, *fp2;
+    float fval, fval2;
+    int aux;
+
+    fp1 = fopen(BAT_ENERGY_NOW, "r");
+    fp2 = fopen(BAT_POWER_NOW, "r");
+    if(fp1 == NULL || fp2 == NULL){
+        strcpy(bl, "(¿?)");
+        return;
+    }
+    fscanf(fp1, "%f", &fval);
+    fscanf(fp2, "%f", &fval2);
+    fclose(fp1);
+    fclose(fp2);
+    
+    fval2 = fval / fval2;
+    aux = fval2;
+    fval = (fval2 - aux)*60;
+    
+    sprintf(bl, "(%.0f:%02.0f)", fval, fval2);
 }
 
 void
@@ -129,11 +153,12 @@ get_network(char *buf){
 
 int
 main(void){
-    Display *dpy;
-    char net[NET_BUF], status[ST_BUF], bstatus[BS_BUF], datetime[DT_BUF];
+    Display *disp;
+    char net[NET_BUF], status[ST_BUF], bl[BL_BUF],
+         ac[AC_BUF], datetime[DT_BUF];
     int bp = -1, temp = -1;
 
-    if( (dpy = XOpenDisplay(NULL)) == NULL ){
+    if( (disp = XOpenDisplay(NULL)) == NULL ){
         fprintf(stderr, "error: dwmstatus could not open display.\n");
         return 1;
     }
@@ -141,16 +166,17 @@ main(void){
     for(;;sleep(UPDATE_INTERVAL)){
         get_network(net);
         get_temperature(&temp);
+        get_ac_status(ac);
         get_battery_percentage(&bp);
+        get_battery_left(bl);
         get_datetime(datetime);
-        get_battery_status(bstatus);
 
-        snprintf(status, ST_BUF, "%s  |  %s %d%%  |  T: %d  |  %s",
-                                net, bstatus, bp, temp, datetime);
-        XStoreName(dpy, DefaultRootWindow(dpy), status);
-        XSync(dpy, False);
+        snprintf(status, ST_BUF, "%s     %s %d%% %s    T: %d     %s",
+                                net, ac, bp, bl, temp, datetime);
+        XStoreName(disp, DefaultRootWindow(disp), status);
+        XSync(disp, False);
     }
 
-    XCloseDisplay(dpy);
+    XCloseDisplay(disp);
     return 0;
 }
