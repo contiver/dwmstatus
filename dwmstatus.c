@@ -26,7 +26,7 @@
 #define UPDATE_INTERVAL 3
 #define BL_BUF          8       // Enough for "(xx:xx)\0"
 #define DT_BUF          129
-#define NET_BUF         129
+#define NET_BUF         IW_ESSID_MAX_SIZE + 7 // Enough for longest ssid + " xx/70" 
 #define ST_BUF          300
 #define AC_BUF          4
 
@@ -66,6 +66,9 @@ get_battery_percentage(int *bp){
     *bp = (100*energy_now)/energy_full; 
 }
 
+/*
+ * TODO find a more accurate method to estimate it
+ 
 void
 get_battery_left(char *bl){
     FILE *fp1, *fp2;
@@ -82,13 +85,13 @@ get_battery_left(char *bl){
     fscanf(fp2, "%f", &fval2);
     fclose(fp1);
     fclose(fp2);
-    
+
     fval2 = fval / fval2;
     aux = fval2;
     fval = (fval2 - aux)*60;
-    
-    sprintf(bl, "(%.0f:%02.0f)", fval, fval2);
+    sprintf(bl, "(%.0f:%02.0f)", fval2, fval);
 }
+*/
 
 void
 get_datetime(char *dtp){
@@ -154,7 +157,7 @@ get_network(char *buf){
 int
 main(void){
     Display *disp;
-    char net[NET_BUF], status[ST_BUF], bl[BL_BUF],
+    char net[NET_BUF], status[ST_BUF],/* bl[BL_BUF], */
          ac[AC_BUF], datetime[DT_BUF];
     int bp = -1, temp = -1;
 
@@ -168,11 +171,11 @@ main(void){
         get_temperature(&temp);
         get_ac_status(ac);
         get_battery_percentage(&bp);
-        get_battery_left(bl);
+     /* get_battery_left(bl); */
         get_datetime(datetime);
 
-        snprintf(status, ST_BUF, "%s     %s %d%% %s    T: %d     %s",
-                                net, ac, bp, bl, temp, datetime);
+        snprintf(status, ST_BUF, "%s    %s %d%%    T: %d    %s",
+                net, ac, bp,/*bl,*/ temp, datetime);
         XStoreName(disp, DefaultRootWindow(disp), status);
         XSync(disp, False);
     }
